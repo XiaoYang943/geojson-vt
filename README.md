@@ -1,3 +1,9 @@
+## 步骤 
+- `npm install`
+- `npm run watch`
+- 打开index.html
+- 拖入test/fixtures/us-states.json
+
 ## geojson-vt &mdash; GeoJSON Vector Tiles
 
 [![Build Status](https://travis-ci.org/mapbox/geojson-vt.svg?branch=main)](https://travis-ci.org/mapbox/geojson-vt)
