@@ -22,16 +22,38 @@ export default function convert(data, options) {
     return features;
 }
 
-function convertFeature(features, geojson, options, index) {
-    if (!geojson.geometry) return;
+/**
+ * 计算Douglas-Peucker算法的阈值(最大距离)
+ */
+function getDouglasPeuckerTolerance(options) {
+    /**
+     * 1 << options.maxZoom 结果等同于pow(2,options.maxZoom)
+     * 这是一个位操作，表示将数字1向左移动options.maxZoom位
+     * 在二进制中，1表示为0000 0001（假设一个足够大的位数），当这个数向左移动options.maxZoom位时，结果是一个所有options.maxZoom位都为0，然后最低位为1的数
+     * 例如，如果options.maxZoom是3，那么结果将是0000 1000（即十进制中的8）。即2的3次方=8
+     * 这个操作通常用于快速计算2的options.maxZoom次方，因为向左移动n位等价于乘以2的n次方
+     */
+    let base = options.tolerance / ((1 << options.maxZoom) * options.extent);
+    let exponent = 2;
+    return Math.pow(base, exponent);
+}
+/**
+ *
+ * @param features 转换后的结果
+ * @param simpleFeatureGeoJSON 要素
+ * @param options 配置项
+ * @param index 要素在要素集合中的索引
+ */
+function convertFeature(features, simpleFeatureGeoJSON, options, index) {
+    if (!simpleFeatureGeoJSON.geometry) return;
 
-    const coords = geojson.geometry.coordinates;
-    const type = geojson.geometry.type;
-    const tolerance = Math.pow(options.tolerance / ((1 << options.maxZoom) * options.extent), 2);
+    const coords = simpleFeatureGeoJSON.geometry.coordinates;
+    const type = simpleFeatureGeoJSON.geometry.type;
+    const tolerance = getDouglasPeuckerTolerance(options);
     let geometry = [];
-    let id = geojson.id;
+    let id = simpleFeatureGeoJSON.id;
     if (options.promoteId) {
-        id = geojson.properties[options.promoteId];
+        id = simpleFeatureGeoJSON.properties[options.promoteId];
     } else if (options.generateId) {
         id = index || 0;
     }
@@ -52,7 +74,7 @@ function convertFeature(features, geojson, options, index) {
             for (const line of coords) {
                 geometry = [];
                 convertLine(line, geometry, tolerance, false);
-                features.push(createFeature(id, 'LineString', geometry, geojson.properties));
+                features.push(createFeature(id, 'LineString', geometry, simpleFeatureGeoJSON.properties));
             }
             return;
         } else {
@@ -69,11 +91,11 @@ function convertFeature(features, geojson, options, index) {
             geometry.push(newPolygon);
         }
     } else if (type === 'GeometryCollection') {
-        for (const singleGeometry of geojson.geometry.geometries) {
+        for (const singleGeometry of simpleFeatureGeoJSON.geometry.geometries) {
             convertFeature(features, {
                 id,
                 geometry: singleGeometry,
-                properties: geojson.properties
+                properties: simpleFeatureGeoJSON.properties
             }, options, index);
         }
         return;
@@ -81,7 +103,7 @@ function convertFeature(features, geojson, options, index) {
         throw new Error('Input data is not a valid GeoJSON object.');
     }
 
-    features.push(createFeature(id, type, geometry, geojson.properties));
+    features.push(createFeature(id, type, geometry, simpleFeatureGeoJSON.properties));
 }
 
 function convertPoint(coords, out) {
@@ -127,10 +149,17 @@ function convertLines(rings, out, tolerance, isPolygon) {
     }
 }
 
+/**
+ * 地理坐标转二维坐标
+ * 将([-180, 180]) 线性映射到范围 ([0, 1])
+ */
 function projectX(x) {
     return x / 360 + 0.5;
 }
-
+/**
+ * 地理坐标转二维坐标
+ * 基于Mercator投影的简化变换
+ */
 function projectY(y) {
     const sin = Math.sin(y * Math.PI / 180);
     const y2 = 0.5 - 0.25 * Math.log((1 + sin) / (1 - sin)) / Math.PI;
